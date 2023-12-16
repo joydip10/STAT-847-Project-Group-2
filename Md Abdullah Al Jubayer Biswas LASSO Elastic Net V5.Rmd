@@ -1,0 +1,288 @@
+---
+title: "STAT-847 Group 2 Project Titanic Survival Prediction"
+author: "Author: Md Abdullah Al Jubayer Biswas"
+date: "Date: 2023-11-18"
+output: pdf_document
+---
+
+```{r message=FALSE, warning=FALSE, include=TRUE}
+#tinytex::install_tinytex()
+library(pROC)
+library(readxl)
+library(ggplot2)
+library(randomForest)
+library(tree)
+library(glmnet)
+library(gridExtra)
+library(nnet)
+library(caret)
+library(titanic)
+```
+
+## Exploratory Data Analysis (EDA)
+
+***Data Description*** 
+We extracted training (completed with predictor variable ) ,and testing (without main outcome variable)  data from Kaggle's Titanic: Machine Learning through Catastrophe. The dataset consisted of four categorical variables: "survived", "Pclass", "sex", and "Embarked". The "survived" variable was coded as "Yes" (coded as "1") and "No" (coded as "0"). The "Pclass" variable was categorized as "1st" (coded as "1"), "2nd" (coded as "2"), and "3rd" (coded as "3"). The "sex" variable was recoded as "female" (coded as "1") and "male" (coded as "0"). Lastly, the "Embarked" variable was recoded as "Cherbourg" (coded as "1"), "Queenstown" (coded as "2"), and "Southampton" (coded as "3"). The categorical variables were
+
+1. Survived   :Survival (0 = No; 1 = Yes)
+2. Pclass     : A proxy for socio-economic status (SES) (1 = 1st; 2 = 2nd; 3 = 3rd)
+3. Sex        : Sex (female ; male)
+4. Embarked   : Port of Embarkation (C = Cherbourg; Q = Queenstown; S = Southampton)
+
+Besides the dataset consisted of four continuous variables: "age", "SibSp", "Parch", and "Fare". The dataset contained four more variable that excluded from the analysis. The four variables were "PassengerId",  "Nmae", "Ticket" and "Cabin".
+
+1. Age        : age
+2. SibSp      : Number of Siblings/Spouses Aboard
+3. Parch      : Number of Parents/Children Aboard
+4. Fare       : Passenger Fare
+
+Other variable that was ignored 
+
+1. Name        : Name of the passenger
+2. PassengerId : Passenger identification number
+3. Ticket      : Ticket number
+4. Cabin       : Cabin number
+
+***Data Loading and Preparation for Exploratory Data Analysis:***
+For preparing the data set, we recorded Sex and Embarked variables in the train data. 
+
+```{r , include=TRUE}
+
+data("titanic_train")
+MyTrainData<-titanic_train
+colnames(MyTrainData)
+MyTrainData<-MyTrainData[,-c(1,4,9, 11)]
+
+#Re-coding sex variable in training data set
+MyTrainData$Sex[MyTrainData$Sex == 'male'] <- 0
+MyTrainData$Sex[MyTrainData$Sex == 'female'] <- 1
+MyTrainData$Sex <- factor(MyTrainData$Sex, 
+                              levels = c(0, 1),
+                              labels = c("Male", "Female"))
+
+#Re-coding Embarked variable in training data set
+MyTrainData$Embarked[MyTrainData$Embarked == 'C'] <- 1
+MyTrainData$Embarked[MyTrainData$Embarked == 'Q'] <- 2
+MyTrainData$Embarked[MyTrainData$Embarked == 'S'] <- 3
+MyTrainData$Embarked <- factor(MyTrainData$Embarked, 
+                              levels = c(1, 2, 3),
+                              labels = c("C", "Q", "S"))
+```
+
+
+
+***Missing value imputation :*** 
+With respect to the imputation of missing values, we utilized a predictive modeling technique based on the distribution of the predictive variables. The predictive modeling approach was employed due to its ability to impute missing values by taking into account the interrelationships among variables in the dataset. Simple imputation techniques, such as replacing missing values with the mean or median, may introduce bias into the estimates for our specific context because the missing data were not eliminated arbitrarily (MCAR). For this reason, we believed that predictive modeling could mitigate this bias by incorporating alternative data-driven probabilities of values.
+
+
+```{r , include=TRUE}
+# Missing value imputation for the Embarked variables 
+table (MyTrainData$Embarked , useNA = "ifany")
+PredictData <- MyTrainData[is.na(MyTrainData$Embarked), ]
+NonMissingData <- MyTrainData[!is.na(MyTrainData$Embarked), ]
+multinom.model <- multinom(Embarked ~ Pclass + Sex + Age, data = NonMissingData)
+PredictData$Embarked <- predict(multinom.model, newdata = PredictData, "class")
+MyTrainData <- rbind(NonMissingData, PredictData)
+table (MyTrainData$Embarked , useNA = "ifany")
+
+# Missing value imputation for the Age variables of train data
+
+names(MyTrainData)
+dim(MyTrainData)
+MyTrainData$Age<-ifelse(is.na(MyTrainData$Age), mean(MyTrainData$Age, na.rm = TRUE), MyTrainData$Age)
+colSums(is.na(MyTrainData))
+
+```
+
+
+## LASSO  Model
+
+```{r include=TRUE}
+set.seed(100)
+xx <-model.matrix(Survived ~ ., data = MyTrainData)[,-1]
+yy <- MyTrainData$Survived 
+grid<-10^seq(10, -2, length=100) 
+id<-sample(nrow(MyTrainData),round(nrow(MyTrainData)*0.80)) 
+xx.train<-xx[id,]
+xx.test<-xx[-id,]
+yy.train<-yy[id]
+yy.test<-yy[-id]
+
+lasso.mod <- glmnet(xx.train, yy.train, alpha = 1, lambda = grid) 
+plot(lasso.mod, label = T) 
+lasso.cv <- cv.glmnet(xx.train, yy.train, alpha = 1, lambda = grid, nfolds=10)
+plot(lasso.cv)
+
+bestlam.lasso <- lasso.cv$lambda.1se 
+lasso.probs=predict(lasso.mod, s=bestlam.lasso, newx=xx.test) 
+mean((lasso.probs-yy.test)^2)
+
+lasso.pred <- ifelse(lasso.probs > 0.5, 1, 0)
+
+confusion.matrix <- confusionMatrix(data = as.factor(lasso.pred), reference = as.factor(yy.test))
+confusion.matrix
+
+confusion.matrix.re <- table(lasso.pred, yy.test)
+confusion.matrix.re
+
+precision <- confusion.matrix.re[1, 1] / sum(confusion.matrix.re[1, ])
+precision
+recall <- confusion.matrix.re[1, 1] / sum(confusion.matrix.re[, 1])
+recall
+f1_score <- 2 * (precision * recall) / (precision + recall)
+f1_score
+
+```
+
+
+
+```{r include=TRUE, message=FALSE}
+lasso.caret <- train(
+  x = xx.train,
+  y = as.factor(yy.train),
+  method = "glmnet",
+  tuneGrid = expand.grid(.alpha = 1, .lambda = grid),
+  trControl = trainControl(method = "cv", number = 10))
+plot(varImp(lasso.caret,scale=F))
+```
+
+Areas under the curve for the fitted logistic regression model
+```{r include=TRUE, message=FALSE}
+lasso.roc.obj <- roc(response = yy.test, predictor =  as.numeric(lasso.probs))
+AUC <- round(auc(lasso.roc.obj), 3)
+AUC
+```
+
+ROC graph for the fitted LASSO Model
+```{r include=TRUE}
+ggroc(lasso.roc.obj, colour = '#0072BD', size = 1)+
+  ggtitle(paste0("ROC Curve ", '(AUC = ', AUC, ')'))
+
+```
+## Elastic Net
+Elastic Net combines Ridge and Lasso regression. The set up for elastic net is a bit different than lasso and ridge regression shown above.
+
+
+
+### Cross Validation
+In this section, we use cross validation to find the most appropriate model for our data. Cross validation allows us to select the best $\alpha$ and $\lambda$ to reduce the error in the model
+```{r}
+set.seed(100)
+cv_10 = trainControl(method = "cv", number = 10)
+MyTrainData$Survived <- as.factor(MyTrainData$Survived)
+
+set.seed(100)
+elastic.net.cv = train(
+  Survived ~ .,
+  data = MyTrainData[id,],
+  method = "glmnet", 
+  trControl = cv_10)
+
+elastic.net.cv 
+```  
+
+### Determining Best $\alpha$ and $\lambda$
+After fitting the cross validation elastic net, we can extract the values of $\alpha$ and $\lambda$ that correspond to the smallest Root Mean Squared Error (RMSE).
+
+```{r}
+# extracting optimal alpha and lambda
+myid <- order(-elastic.net.cv$results$Accuracy)[1]
+
+# extracts the alpha that corresponds to the smallest RMSE
+mybest.alpha <- order(elastic.net.cv$results$alpha)[myid]
+
+# extracts the lambda that corresponds to the smallest RMSE
+mybest.lambda <- elastic.net.cv$results$lambda[myid]
+
+
+```
+
+### Fitting Elastic Net with optimal $\alpha$ and $\lambda$
+Once we have the best $\alpha$ and $\lambda$, we can build the elastic net model
+```{r}
+elastic.net.model<- glmnet(xx.train, yy.train, alpha = mybest.alpha, lambda = mybest.lambda) 
+
+
+coef(elastic.net.model) 
+
+
+elastic.net.pred<-predict(elastic.net.model, s=mybest.lambda, newx=xx.test) 
+
+mean((elastic.net.pred-yy.test)^2)
+
+elastic.pred <- ifelse(elastic.net.pred >= 0.5, 1, 0)
+
+
+```
+
+### Assessing model accuracy
+Once we have built the elastic net model, we assess its accuracy.
+```{r}
+confusion.matrix2 <- confusionMatrix(data = as.factor(elastic.pred), reference = as.factor(yy.test))
+confusion.matrix2
+
+confusion.matrix.re2 <- table(elastic.pred, yy.test)
+confusion.matrix.re2
+
+precision <- confusion.matrix.re2[1, 1] / sum(confusion.matrix.re2[1, ])
+precision
+recall <- confusion.matrix.re2[1, 1] / sum(confusion.matrix.re2[, 1])
+recall
+f1_score <- 2 * (precision * recall) / (precision + recall)
+f1_score
+```
+Areas under the curve for the fitted logistic regression model
+```{r}
+elastic.roc.obj <- roc(response = yy.test, predictor =  as.numeric(elastic.net.pred))
+AUC <- round(auc(elastic.roc.obj), 3)
+AUC
+```
+
+ROC graph for the fitted LASSO Model
+```{r include=TRUE}
+ggroc(elastic.roc.obj, colour = '#0072BD', size = 1)+
+  ggtitle(paste0("ROC Curve ", '(AUC = ', AUC, ')'))
+
+```
+
+
+```{r include=TRUE}
+coefficients<-as.matrix(coef(elastic.net.model))
+var.importance <- rowSums(abs(coefficients))
+
+var.importance.df <- data.frame(Variable = rownames(coefficients), Importance = var.importance)
+
+var.importance.df <- var.importance.df[order(-var.importance.df$Importance), ]
+
+
+ggplot(var.importance.df, aes(x = Importance, y = reorder(Variable, Importance))) +
+  geom_bar(stat = "identity", fill = "blue") +
+  xlab("Importance") +
+  ylab("Variable") +
+  ggtitle("") +
+  theme(axis.text.y = element_text(angle = 0, hjust = 1))
+``` 
+  
+
+
+## Naive Bayes Classification
+
+Fitting naive bayes model, where Pclass, Sex, Age were used as independent variable
+
+```{r include=TRUE}
+#naive.model <- NaiveBayes(Survived ~ Pclass + Sex + Age, data = MyTrainDataSplit1)
+#naive.probs <- predict(naive.model, MyTrainDataSplit2)
+
+```
+
+Confusion Matrix for the fitted naive bayes model
+
+```{r include=TRUE}
+#confusion.matrix <- confusionMatrix(naive.probs$class, MyTrainDataSplit2$Survived)
+#confusion.matrix
+```
+
+
+
+
+

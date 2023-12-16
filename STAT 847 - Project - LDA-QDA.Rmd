@@ -1,0 +1,131 @@
+---
+title: "STAT 847 - Project"
+author: "Dananji Shashiprabha"
+date: "2023-10-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Data Preperation
+
+Importing necessary libraries
+```{r}
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(caret)
+library(e1071)
+library(mltools)
+library(data.table)
+library(class)
+library(MASS)
+```
+
+Importing train dataset
+```{r}
+path <- ""
+df <- read.csv("train_Joy.csv")
+head(df)
+```
+
+
+# Checking Assumptions (Normality)
+```{r}
+v <- df$Age^(1/2)
+qqnorm(v)
+qqline(v)
+shapiro.test(v)
+```
+
+```{r}
+df$Pclass <- as.factor(df$Pclass)
+df$Survived <- as.factor(df$Survived)
+df$IsMale <- as.factor(df$IsMale)
+df$EmbarkedC <- as.factor(df$EmbarkedC)
+df$EmbarkedQ <- as.factor(df$EmbarkedQ)
+df$EmbarkedS <- as.factor(df$EmbarkedS)
+```
+
+
+
+#LDA
+
+Model fitting
+```{r}
+# Split the data into training and testing sets
+set.seed(100)
+df$Survived <- as.factor(df$Survived)
+index <- sample(1:nrow(df), 0.8 * nrow(df))
+train_data <- df[index, ]
+test_data <- df[-index, ]
+
+#Model
+attach(train_data)
+#lda.model = lda (Survived~factor(Pclass)+Sex+Age+SibSp, data=train_data)
+lda.model = lda (Survived~factor(Pclass)+factor(IsMale)+Age+SibSp+factor(EmbarkedC)+factor(EmbarkedQ)+factor(EmbarkedS), data=train_data)
+lda.model
+detach(train_data)
+```
+
+Validation
+```{r}
+#attach(test_data)
+predmodel.test.lda = predict(lda.model, newdata=test_data)
+#table(Predicted=predmodel.test.lda$class, Survived=test_data$Survived)
+cf <- confusionMatrix(predmodel.test.lda$class, test_data$Survived)
+cf
+
+precision <- cf$byClass["Pos Pred Value"]
+recall <- cf$byClass["Sensitivity"]
+f1_score <- 2 * (precision * recall) / (precision + recall)
+f1_score
+```
+#QDA
+
+Model fitting
+```{r}
+#Model
+attach(train_data)
+qda.model = qda (Survived~factor(Pclass)+factor(IsMale)+Age, data=train_data)
+qda.model
+```
+
+Validation
+```{r}
+attach(test_data)
+predmodel.test.qda = predict(qda.model, newdata=test_data)
+cf <- confusionMatrix(predmodel.test.qda$class, test_data$Survived)
+cf
+
+precision <- cf$byClass["Pos Pred Value"]
+recall <- cf$byClass["Sensitivity"]
+f1_score <- 2 * (precision * recall) / (precision + recall)
+f1_score
+```
+### Data preperation for the given test data
+```{r}
+test <- read.csv("test_Joy.csv")
+colSums(is.na(test))
+```
+
+Test predictions - LDA
+```{r}
+attach(test)
+test.lda = predict(lda.model, newdata=test)
+final_predictions <- data.frame(PassengerId = PassengerId, Survived = test.lda$class)
+write.csv(final_predictions, "LDA_Joy.csv", row.names = F)
+```
+76% accuracy for the test dataset on Kaggle.
+
+Test predictions - QDA
+```{r}
+attach(test)
+test.qda = predict(qda.model, newdata=test)
+final_predictions <- data.frame(PassengerId = PassengerId, Survived = test.qda$class)
+write.csv(final_predictions, "QDA_Joy.csv", row.names = F)
+```
+74% accuracy for the test dataset on Kaggle.
+
+

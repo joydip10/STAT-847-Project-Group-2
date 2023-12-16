@@ -1,0 +1,137 @@
+---
+title: "STAT-847 Group 2 Project Titanic Survival Prediction"
+author: "Author: JAP"
+date: "Date: 2023-11-18"
+output: pdf_document
+---
+
+```{r message=FALSE, warning=FALSE, include=TRUE}
+library(readxl)
+library(ggplot2)
+library(randomForest)
+library(tree)
+library(glmnet)
+library(gridExtra)
+library(nnet)
+library(caret)
+library(pROC)
+library(klaR)
+```
+
+
+
+```{r , include=TRUE}
+# # train data loading
+library(titanic)
+data("titanic_train")
+MyTrainData<-titanic_train
+colnames(MyTrainData)
+MyTrainData<-MyTrainData[,-c(1,4,9, 11)]
+
+#Adding value label for Survived variable
+MyTrainData$Survived <- factor(MyTrainData$Survived, 
+                              levels = c(0, 1),
+                              labels = c("No", "Yes"))
+
+#Adding value label for  the proxy for socio-economic status (SES) variable
+MyTrainData$Pclass <- factor(MyTrainData$Pclass, 
+                              levels = c(1, 2, 3),
+                              labels = c("1st", "2nd", "3rd"))
+
+
+#Re-coding sex variable in training data set
+MyTrainData$Sex[MyTrainData$Sex == 'male'] <- 0
+MyTrainData$Sex[MyTrainData$Sex == 'female'] <- 1
+MyTrainData$Sex <- factor(MyTrainData$Sex, 
+                              levels = c(0, 1),
+                              labels = c("Male", "Female"))
+
+#Re-coding Embarked variable in training data set
+MyTrainData$Embarked[MyTrainData$Embarked == 'C'] <- 1
+MyTrainData$Embarked[MyTrainData$Embarked == 'Q'] <- 2
+MyTrainData$Embarked[MyTrainData$Embarked == 'S'] <- 3
+MyTrainData$Embarked <- factor(MyTrainData$Embarked, 
+                              levels = c(1, 2, 3),
+                              labels = c("C", "Q", "S"))
+```
+
+***Missing value imputation :*** 
+With respect to the imputation of missing values, we utilized a predictive modeling technique based on the distribution of the predictive variables. The predictive modeling approach was employed due to its ability to impute missing values by taking into account the interrelationships among variables in the dataset. Simple imputation techniques, such as replacing missing values with the mean or median, may introduce bias into the estimates for our specific context because the missing data were not eliminated arbitrarily (MCAR). For this reason, we believed that predictive modeling could mitigate this bias by incorporating alternative data-driven probabilities of values.
+
+
+```{r , include=TRUE}
+# Missing value imputation for the Embarked variables 
+table (MyTrainData$Embarked , useNA = "ifany")
+PredictData <- MyTrainData[is.na(MyTrainData$Embarked), ]
+NonMissingData <- MyTrainData[!is.na(MyTrainData$Embarked), ]
+multinom.model <- multinom(Embarked ~ Pclass + Sex + Age, data = NonMissingData)
+PredictData$Embarked <- predict(multinom.model, newdata = PredictData, "class")
+MyTrainData <- rbind(NonMissingData, PredictData)
+table (MyTrainData$Embarked , useNA = "ifany")
+
+# Missing value imputation for the Age variables of train data
+
+names(MyTrainData)
+dim(MyTrainData)
+MyTrainData$Age<-ifelse(is.na(MyTrainData$Age), mean(MyTrainData$Age, na.rm = TRUE), MyTrainData$Age)
+colSums(is.na(MyTrainData))
+
+
+```
+
+
+## Data partition
+
+```{r include=TRUE}
+set.seed(100)
+trainIndex <- createDataPartition(MyTrainData$Survived, p = 0.8, list = FALSE, times = 1)
+MyTrainDataSplit1 <- MyTrainData [trainIndex, ]
+MyTrainDataSplit2 <- MyTrainData [-trainIndex, ]
+```
+
+
+## Naive Bayes Classification
+
+Fitting naive bayes model, where Pclass, Sex, Age were used as independent variable
+
+```{r include=TRUE}
+library(e1071)
+library(gmodels)
+naive.model <- naiveBayes(Survived ~ ., data = MyTrainDataSplit1)
+ naive.probs <- predict(naive.model, newdata = MyTrainDataSplit2, type = "raw")
+ naive.probs1 <- predict(naive.model, newdata = MyTrainDataSplit2, type = "class")
+
+```
+
+
+
+```{r}
+#Confusion Matrix for the fitted naive bayes model
+
+confusion.matrix <- confusionMatrix(naive.probs1, MyTrainDataSplit2$Survived)
+confusion.matrix
+
+confusion.matrix.re2 <- table(naive.probs1, MyTrainDataSplit2$Survived)
+confusion.matrix.re2
+
+precision <- confusion.matrix.re2[1, 1] / sum(confusion.matrix.re2[1, ])
+precision
+recall <- confusion.matrix.re2[1, 1] / sum(confusion.matrix.re2[, 1])
+recall
+f1_score <- 2 * (precision * recall) / (precision + recall)
+f1_score
+
+#predicted_probs <- unlist(naive.probs)
+
+#ROCurve<-roc(as.numeric(MyTrainDataSplit2$Survived),as.numeric(naive.probs))
+#plot(ROCurve, main = "ROC Curve", col = "blue", lwd = 2)
+#AUC <- round(auc(r), 3)
+#AUC
+
+#ROC_Object8 <- roc(MyTrainDataSplit2$Survived, naive.probs)
+#AUC8 <- round(auc(ROC_Object8), 3)
+```
+
+
+
+
