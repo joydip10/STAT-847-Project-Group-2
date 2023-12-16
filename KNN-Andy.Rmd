@@ -1,0 +1,432 @@
+---
+title: "randomforest"
+author: "Joy Dip Das"
+date: "2023-12-11"
+output: pdf_document
+---
+
+
+
+## Loading the titanic dataset from the folder- Project under dataset subfolder
+
+```{r}
+data <- read.csv("dataset\\titanic.csv")
+test <- read.csv("dataset\\test.csv")
+```
+
+```{r}
+data$Embarked
+```
+
+
+```{r}
+names(data)
+dim(data)
+```
+### Explanation for the column names of the titanic dataset
+
+\textbf{PassengerID}: A unique identifier for each passenger.
+
+\textbf{Survived}: This binary variable indicates whether a passenger survived (1) or did not survive (0) the Titanic disaster. It is the target variable for predictive modeling.
+
+\textbf{Pclass (Passenger Class)}: This represents the class of the passenger's ticket and, by extension, their socio-economic status. It has three possible values: 1st class, 2nd class, and 3rd class.
+
+\textbf{Name}: The name of the passenger.
+
+\textbf{Sex}: The gender of the passenger, which is either "male" or "female."
+
+\textbf{Age}: The age of the passenger. Some entries may be missing.
+
+\textbf{SibSp}: The number of siblings or spouses that the passenger had aboard the Titanic.
+
+\textbf{Parch}: The number of parents or children that the passenger had aboard the Titanic.
+
+\textbf{Ticket}: The ticket number.
+
+\textbf{Fare}: The fare the passenger paid for the ticket.
+
+\textbf{Cabin}: The cabin number of the passenger. This feature may have a lot of missing values.
+
+\textbf{Embarked}: The port at which the passenger boarded the Titanic. It can take one of three values: "C" (Cherbourg), "Q" (Queenstown), or "S" (Southampton).
+
+
+
+## Summary Statistics
+
+```{r}
+summary(data)
+```
+
+## Structure of the dataset
+
+```{r}
+str(data)
+unique(data$Embarked)
+```
+
+## handling missing values
+
+
+### Count null values 
+
+```{r}
+colSums(is.na(data))
+
+colSums(is.na(test))
+```
+
+'Age' has 177 missing values
+
+### Imputing all missing age values
+
+```{r}
+data$Age<-ifelse(is.na(data$Age), mean(data$Age, na.rm = TRUE), data$Age)
+test$Age<-ifelse(is.na(test$Age), mean(test$Age, na.rm = TRUE), test$Age)
+test$Fare<-ifelse(is.na(test$Fare), mean(test$Fare, na.rm = TRUE), test$Fare)
+```
+
+### Verifying that all missing values are handled
+
+```{r}
+colSums(is.na(data))
+```
+Here, the missing values from Age column of the dataset has been removed successfully 
+
+#### Outlier detection by Fare feature
+
+```{r}
+#z_scores <- scale(data$Fare)
+
+#threshold <- 3
+
+#outlier_indices <- which(abs(z_scores) > threshold)
+
+#cleaned_data <- data[-outlier_indices, ]
+
+#summary(cleaned_data)
+
+#num_outliers_removed <- length(outlier_indices)
+#cat("Number of outliers removed:", num_outliers_removed, "\n")
+
+#data <- cleaned_data
+#dim(data)
+```
+
+The "Fare" feature was used for outlier detection in the example provided because it is a continuous numeric variable that often exhibits a wide range of values. Outliers in the "Fare" feature can have a significant impact on statistical analyses and machine learning models.
+
+The "Fare" feature typically has a wider range of values compared to many other features in the dataset. Some passengers may have paid significantly higher fares, and these high values can potentially be outliers. The "Fare" is associated with the passenger's ticket class or economic class. Different fare levels correspond to different levels of service and accommodation on the Titanic. Therefore, extreme values in the "Fare" variable could be indicative of passengers with unique circumstances or special accommodations.
+
+## Data Visualization
+
+### Bar plot for passenger class (Pclass)
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+ggplot(data, aes(x = factor(Pclass))) +
+  geom_bar(fill = "lightblue") +
+  labs(title = "Passenger Class Distribution",
+       x = "Passenger Class",
+       y = "Count")
+```
+
+### Histogram for age
+
+```{r}
+ggplot(data, aes(x = Age)) +
+  geom_histogram(fill = "lightgreen", bins = 20) +
+  labs(title = "Age Distribution",
+       x = "Age",
+       y = "Count")
+```
+
+
+### Bar plot for Gender (Sex)
+
+```{r}
+ggplot(data, aes(x = Sex, fill = Sex)) +
+  geom_bar() +
+  labs(title = "Gender Distribution",
+       x = "Gender",
+       y = "Count") +
+  scale_fill_manual(values = c("male" = "lightblue", "female" = "lightpink"))
+
+```
+
+### Bar plot for Survival
+
+```{r}
+ggplot(data, aes(x = factor(Survived))) +
+  geom_bar(fill = "lightblue") +
+  labs(title = "Survival Distribution",
+       x = "Survived",
+       y = "Count")
+
+```
+
+### Scatterplot for exploring the relationship between age and fare
+
+```{r}
+ggplot(data, aes(x = Age, y = Fare)) +
+  geom_point() +
+  labs(title = "Age vs. Fare",
+       x = "Age",
+       y = "Fare")
+
+```
+
+### Box plot to visualize fare distribution by passenger class
+
+```{r}
+ggplot(data, aes(x = factor(Pclass), y = Fare)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title = "Fare Distribution by Passenger Class",
+       x = "Passenger Class",
+       y = "Fare")
+```
+
+### bar plot for Embarked port
+
+```{r}
+ggplot(data, aes(x = factor(Embarked))) +
+  geom_bar(fill = "lightblue") +
+  labs(title = "Port of Embarkation Distribution",
+       x = "Port of Embarkation",
+       y = "Count")
+
+```
+
+
+### barplot for exploring family size (SibSp + Parch)
+
+```{r}
+data$FamilySize <- data$SibSp + data$Parch
+ggplot(data, aes(x = factor(FamilySize))) +
+  geom_bar(fill = "lightblue") +
+  labs(title = "Family Size Distribution",
+       x = "Family Size",
+       y = "Count")
+```
+
+### Correlation plot
+
+```{r}
+library(corrplot)
+library(dplyr)
+```
+
+```{r}
+numericVars <- select_if(data, is.numeric)
+correlationMatrix <- cor(numericVars)
+corrplot(correlationMatrix, method = "color", type = "lower", tl.col = "black", 
+         diag = FALSE, addCoef.col = "black", number.cex = 0.7)
+```
+
+### Pairplot for selected variables- Age, Fare, Pclass, FamilySize
+
+```{r}
+select_vars <- c("Age", "Fare", "Pclass", "FamilySize")
+pairs(data[select_vars])
+```
+
+## Data Transformation
+
+### Encoding categorical variables
+
+#### Encoding Sex variable into binary format- 0 for male and 1 for female
+
+```{r}
+data$Sex <- as.factor(ifelse(data$Sex == "female", 1, 0))
+#test$Sex <- as.factor(ifelse(test$Sex == "female", 1, 0))
+```
+
+#### Encoding the "Embarked" variable as a factor
+
+```{r}
+data$Embarked <- as.factor(data$Embarked)
+#test$Embarked <- as.factor(test$Embarked)
+#embarked_mapping <- c("S" = 1, "C" = 2, "Q" = 3," "=4)
+#data$Embarked <- embarked_mapping[data$Embarked]
+
+```
+
+```{r}
+data$Embarked
+```
+
+#### Scale the "Age" and "Fare" variables to have a mean of 0 and standard deviation of 1 (Standardization)
+
+```{r}
+#data$Age <- scale(data$Age)
+#data$Fare <- scale(data$Fare)
+```
+
+
+```{r}
+names(data)
+head(data)
+```
+
+
+### Basic analysis from Correlation plot
+
+#### Survival by Gender (Survived vs Gender)
+
+
+```{r}
+ggplot(data, aes(x = Survived, fill = Sex)) +
+  geom_bar() +
+  labs(title = "Survival by Gender",
+       x = "Survived",
+       y = "Count") +
+  scale_fill_manual(values = c("0" = "lightblue", "1" = "lightpink"))
+
+```
+
+#### Survival by Pclass
+
+```{r}
+ggplot(data, aes(x = factor(Pclass), fill = factor(Survived))) +
+  geom_bar() +
+  labs(title = "Survival by Passenger Class",
+       x = "Passenger Class",
+       y = "Count") +
+  scale_fill_manual(values = c("0" = "lightblue", "1" = "lightpink"))
+
+```
+
+#### Survival by port Embarked
+
+```{r}
+ggplot(data, aes(x = factor(Embarked), fill = factor(Survived))) +
+  geom_bar() +
+  labs(title = "Survival by port embarked",
+       x = "Port of Embarkation",
+       y = "Count") +
+  scale_fill_manual(values = c("0" = "lightblue", "1" = "lightpink"))
+```
+
+
+
+#### Survival vs Fare
+
+```{r}
+ggplot(data, aes(x = Fare, fill = factor(Survived))) +
+  geom_density(alpha = 0.6) +
+  labs(title = "Distribution of Fare by Survival",
+       x = "Fare",
+       y = "Density") +
+  scale_fill_manual(values = c("0" = "lightblue", "1" = "lightpink"))
+```
+
+#### Train Test Split
+
+```{r}
+set.seed(1)
+id <- sample(1:nrow(data), 0.8 * nrow(data))
+train_data <- data[id, ]
+train_data$Survived <- as.factor(train_data$Survived)
+test_data <- data[-id, ]
+```
+
+
+#### Logistic regresssion
+
+
+```{r}
+library(glmnet)
+
+features <- c("Pclass", "Sex", "Age", "SibSp","Parch", "Fare","Embarked")
+target <- "Survived"
+
+x <- train_data[,features]
+y <- train_data$Survived
+
+data <- cbind(x, Survived = y)
+
+predictors <- paste(colnames(x), collapse = " + ")
+formula <- as.formula(paste("Survived ~", predictors))
+
+lr <- glm(formula, data = data, family = binomial)
+
+summary(lr)
+test_x <- test_data[,features]
+lr_predictions <- predict(lr, newdata = test_x, type = "response")
+lr_predictions <- ifelse(lr_predictions > 0.5, 1, 0)
+test_y <- test_data$Survived
+correct_predictions <- sum(lr_predictions == test_y)
+lr_accuracy <- correct_predictions / length(test_y)
+cat('Logistic Regression:', lr_accuracy,"\n")
+
+```
+```{r}
+p <- predict(lr, newdata = test[,features], type = "response")
+p <- ifelse(p > 0.5, 1, 0)
+p
+```
+
+
+
+```{r}
+features <- c("Pclass", "Sex", "Age", "SibSp", "Parch", "Fare","Embarked")
+```
+
+#######################################
+#######################################
+
+# Start KNN algorithm
+```{r}
+#Split data set into 80/20 train/test set
+set.seed(100)
+data$Name <- NULL
+data$Ticket <- NULL
+data$Cabin <- NULL
+data$FamilySize <-NULL
+dt <- sort(sample(nrow(data), nrow(data)*.8))
+train <- data[dt,]
+test <- data[-dt,]
+xx.train <- train[,-1]
+yy.train <- train$Survived
+xx.test <- test[,-1]
+yy.test <- test$Survived
+```
+```{r}
+xx.train$Survived <- NULL
+xx.test$Survived <- NULL
+head(xx.train)
+```
+### KNN cross validation
+```{r}
+library(class)
+```
+
+```{r}
+set.seed(100)
+accuracy <- numeric(length(1:200))
+# KNN fit and cross validation
+for (k in 1:200) {
+  knn.fit <- knn(xx.train, xx.test, yy.train, k = k)
+  accuracy[k] <- mean(knn.fit == yy.test)
+}
+
+best.k <- which.max(accuracy)
+best.accuracy <- max(accuracy)
+
+print(paste("Best k =",best.k))
+print(paste("Best accuracy =", best.accuracy))
+
+```
+```{r}
+set.seed(100)
+knn.fit1 <- knn(xx.train, xx.test, yy.train, k = 1)
+```
+```{r}
+library(caret)
+f.pred <-factor(knn.fit1)
+a.pred <-factor((yy.test))
+confusionMatrix(f.pred, a.pred, mode = "everything", positive = "0")
+result <- confusionMatrix(f.pred, a.pred, mode = "everything", positive = "0")
+as.table(result)
+```
